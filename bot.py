@@ -1,14 +1,36 @@
 import datetime
 import logging
 import os
-import sys
 import re
+import sys
 
 import discord
 import requests
 
 client = discord.Client()
+
 logging.basicConfig(level=logging.INFO)
+
+for required in ["MATEMANN_BOT_TOKEN", "MATEMANN_GUILD_ID"]:
+    if os.environ.get(required):
+        continue
+    logging.error(f"Missing environment variable {required}.")
+    sys.exit(1)
+
+config = {
+    # Archive channels and categories after n days
+    "archive_after": os.environ.get("MATEMANN_CHANNEL_ARCHIVE_AFTER", "0"),
+    # Prefix for archived channels
+    "archive_prefix": os.environ.get("MATEMANN_CHANNEL_ARCHIVE_PREFIX", "ZZZ_"),
+    # Your discord bot token. Required.
+    "bot_token": os.environ.get("MATEMANN_BOT_TOKEN", ""),
+    # Number of events from ctftime to fetch.
+    "ctftime_limit": os.environ.get("MATEMANN_CTFTIME_LIMIT", "15"),
+    # Your discord guild id. Required.
+    "guild_id": os.environ.get("MATEMANN_GUILD_ID", ""),
+    # Minimum CTFTime weight
+    "min_weight": os.environ.get("MATEMANN_MIN_WEIGHT", "0.0")
+}
 
 
 def get_ctftime_events(delta=0):
@@ -21,7 +43,7 @@ def get_ctftime_events(delta=0):
     now = datetime.datetime.now().timestamp()
     timedelta = datetime.timedelta(days=delta)
     timestamp = now - timedelta.total_seconds()
-    url = f"https://ctftime.org/api/v1/events/?limit=15&start={int(timestamp)}"
+    url = f"https://ctftime.org/api/v1/events/?limit={config["ctftime_limit"]}&start={int(timestamp)}"
     r = requests.get(url, headers=fake_user_agent).json()
     events = []
     # get event details and skip onsite events
@@ -29,12 +51,22 @@ def get_ctftime_events(delta=0):
         details = requests.get(
             f"https://ctftime.org/api/v1/events/{event['id']}/", headers=fake_user_agent
         ).json()
+        # skip onsite CTFs
         if details["onsite"]:
             continue
+        # skip closed CTFs
         if details["restrictions"] != "Open":
             continue
+        # get weight and minimum weight
+        min_weight = float(config["min_weight"])
+        weight = float(details.get("weight", 0.0))
+        # if minimum weight not reeached
+        if weight < min_weight:
+            continue
+        # if all checks passed, add to events
         events.append(details)
-    logging.info(f"Fetched {len(events)} CTFTime events.")
+    skipped = len(r) - len(events)
+    logging.info(f"Fetched {len(events)} CTFTime events, skipped {skipped} events due to filters.")
     return events
 
 
@@ -44,12 +76,25 @@ def gen_topic(category, event):
     ctf_title = event["title"]
     ctf_params = {
         "id": event["ctf_id"],
-        "start": int(float(datetime.datetime.strptime(event["start"], "%Y-%m-%dT%H:%M:%S%z").timestamp())),
-        "finish": int(float(datetime.datetime.strptime(event["finish"], "%Y-%m-%dT%H:%M:%S%z").timestamp())),
+        "start": int(
+            float(
+                datetime.datetime.strptime(
+                    event["start"], "%Y-%m-%dT%H:%M:%S%z"
+                ).timestamp()
+            )
+        ),
+        "finish": int(
+            float(
+                datetime.datetime.strptime(
+                    event["finish"], "%Y-%m-%dT%H:%M:%S%z"
+                ).timestamp()
+            )
+        ),
     }
     ctf_params_query = "&".join([f"{k}={v}" for k, v in ctf_params.items()])
     ctf_markdown = f"{ctf_title} - {category} - [View on CTFTime]({ctftime_url}?{ctf_params_query})"
     return ctf_markdown
+
 
 def decode_topic(topic):
     """Decode the topic to get the CTFTime event data"""
@@ -59,6 +104,7 @@ def decode_topic(topic):
     params = re.search(r"\?(.*)", url.group(1)).group(1).split("&")
     params_dict = {k: v for k, v in [x.split("=") for x in params]}
     return params_dict
+
 
 async def create_discord_events(guild, events):
     """Create a discord event per ctf."""
@@ -95,8 +141,6 @@ async def create_discord_categories(guild, events):
             continue
         # Only create a category if >1 person is interested
         discord_event = next(e for e in discord_events if e.name == event["title"])
-        print(discord_event)
-        print(discord_event.subscriber_count)
         if discord_event.subscriber_count <= 0:
             logging.info(f"Skipping category creation for {event["title"]}.")
             continue
@@ -130,46 +174,52 @@ async def delete_discord_categories(guild):
     """Delete all categories of past CTFs without any chat activity."""
     categories = guild.categories
     for category in categories:
-        # Don't touch default categories
-        if category.name in ["Text channels", "Voice channels"]:
-            continue
         end_time = None
         for channel in category.channels:
-            # get ctf data
+            # skip non-text channels
+            if not channel.type == discord.ChannelType.text:
+                continue
+            # skip if no topic has been set
             if not (topic := channel.topic):
                 continue
+            # skip if topic can't be parsed
             if not (ctftime_params := decode_topic(topic)):
                 continue
-            end_time = datetime.datetime.fromtimestamp(int(float(ctftime_params["finish"])))
-            # If the CTF is still running
+            # get the end time of the channel
+            end_time = datetime.datetime.fromtimestamp(
+                int(float(ctftime_params["finish"]))
+            )
+            end_time += datetime.timedelta(days=int(config["archive_after"]))
+            # skip the CTF is still running
             if end_time > datetime.datetime.now():
                 continue
-            # if channel is empty
+            # delete if channel is empty
             if not channel.last_message_id:
                 await channel.delete()
                 logging.info(f"Deleted channel {channel.name} in {category.name}.")
+        # skip if CTF isn't over yet
         if not (end_time and end_time < datetime.datetime.now()):
             continue
-        # If no more channels, delete category
+        # if no more channels, delete category
         if not category.channels:
             await category.delete()
             logging.info(f"Deleted category {category.name}.")
         else:
-            # Leave already archived categories alone
-            if category.name.startswith("ZZZ_"):
+            # leave already archived categories alone
+            if category.name.startswith(config["archive_prefix"]):
                 continue
-            # Rename the category to ZZZ_name
-            await category.edit(name=f"ZZZ_{category.name}")
+            # rename the category to ZZZ_name
+            await category.edit(name=f"{config["archive_prefix"]}_{category.name}")
             logging.info(f"Archived category {category.name}.")
 
 
 @client.event
 async def on_ready():
     """Execute commands as soon as the bot is ready."""
-    print("Connected to the bot.")
-
-    guild = client.get_guild(int(os.environ["GUILD_ID"]))
-
+    logging.info("Bot is ready.")
+    # Get guild data
+    guild = client.get_guild(int(config["guild_id"]))
+    # Fetch events
     events = get_ctftime_events()
     # Create new events
     await create_discord_events(guild, events)
@@ -185,4 +235,4 @@ async def on_ready():
     sys.exit(0)
 
 
-client.run(os.environ["BOT_TOKEN"])
+client.run(config["bot_token"])
