@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "matemann.fullname" . }}
+  labels:
+    {{- include "matemann.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          automountServiceAccountToken: false
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ .Chart.Name }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - name: MATEMANN_CHANNEL_ARCHIVE_AFTER
+                  value: {{ .Values.matemann.channelArchiveAfter | quote }}
+                - name: MATEMANN_CHANNEL_ARCHIVE_PREFIX
+                  value: {{ .Values.matemann.channelArchivePrefix | quote }}
+                - name: MATEMANN_BOT_TOKEN
+                  value: {{ .Values.matemann.discord.botToken | quote }}
+                - name: MATEMANN_GUILD_ID
+                  value: {{ .Values.matemann.discord.guildId | quote }}
+                - name: MATEMANN_CTFTIME_LIMIT
+                  value: {{ .Values.matemann.ctfTime.eventLimit | quote }}
+                - name: MATEMANN_MIN_WEIGHT
+                  value: {{ .Values.matemann.ctfTime.minWeight | quote }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              {{- with .Values.volumeMounts }}
+              volumeMounts:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- with .Values.volumes }}
+          volumes:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
