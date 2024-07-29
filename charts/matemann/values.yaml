@@ -1,4 +1,15 @@
+matemann:
+  channelArchiveAfter: "0"
+  channelArchivePrefix: "ZZZ_"
+  discord:
+    botToken: ""
+    guildId: ""
+  ctfTime:
+    eventLimit: "15"
+    minWeight: "0.0"
+
 replicaCount: 1
+
 image:
   repository: ghcr.io/gianklug/matemann
   pullPolicy: IfNotPresent
