@@ -8,7 +8,7 @@ matemann:
     eventLimit: "15"
     minWeight: "0.0"
 
-replicaCount: 1
+schedule: "*/1 * * * *"
 
 image:
   repository: ghcr.io/gianklug/matemann
