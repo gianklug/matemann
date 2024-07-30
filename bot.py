@@ -140,8 +140,8 @@ async def create_discord_categories(guild, events):
             # Ignore already existing categories
             continue
         # Only create a category if >1 person is interested
-        discord_event = next(e for e in discord_events if e.name == event["title"])
-        if discord_event.subscriber_count <= 0:
+        filtered_events = list(e for e in discord_events if e.name == event["title"])
+        if len(filtered_events) == 0 or filtered_events[0].subscriber_count <= 0:
             logging.info(f"Skipping category creation for {event["title"]}.")
             continue
         await guild.create_category(event["title"])
