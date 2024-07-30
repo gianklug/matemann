@@ -144,7 +144,8 @@ async def create_discord_categories(guild, events):
         if len(filtered_events) == 0 or filtered_events[0].subscriber_count <= 0:
             logging.info(f"Skipping category creation for {event["title"]}.")
             continue
-        await guild.create_category(event["title"])
+        min_position = min(c.position for c in guild.categories if c.name.startswith(config["archive_prefix"])) - 1
+        await guild.create_category(event["title"], position=min_position)
         logging.info(f"Created category {event["title"]}.")
         await create_discord_channels(guild, event)
 
@@ -209,7 +210,8 @@ async def delete_discord_categories(guild):
             if category.name.startswith(config["archive_prefix"]):
                 continue
             # rename the category to ZZZ_name
-            await category.edit(name=f"{config["archive_prefix"]}_{category.name}")
+            max_position = max(c.position for c in guild.categories if c.name.startswith(config["archive_prefix"])) - 1
+            await category.edit(name=f"{config["archive_prefix"]}{category.name}", position=max_position)
             logging.info(f"Archived category {category.name}.")
 
 
