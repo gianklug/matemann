@@ -9,6 +9,9 @@ matemann:
     minWeight: "0.0"
 
 schedule: "*/1 * * * *"
+concurrencyPolicy: Replace
+backoffLimit: 6
+activeDeadlineSeconds: 600
 
 image:
   repository: ghcr.io/gianklug/matemann
