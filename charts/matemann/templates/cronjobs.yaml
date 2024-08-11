@@ -9,8 +9,8 @@ spec:
   concurrencyPolicy: {{ .Values.concurrencyPolicy | quote }}
   jobTemplate:
     spec:
-      activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds | quote }}
-      backoffLimit: {{ .Values.backoffLimit | quote }}
+      activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
+      backoffLimit: {{ .Values.backoffLimit }}
       template:
         spec:
           restartPolicy: Never
