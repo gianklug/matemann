@@ -222,7 +222,12 @@ async def on_ready():
     # Get guild data
     guild = client.get_guild(int(config["guild_id"]))
     # Fetch events
-    events = get_ctftime_events()
+    try:
+        events = get_ctftime_events()
+    except Exception as e:
+        logging.error("Got exception fetching ctftime events")
+        logging.error(e)
+        sys.exit(1)
     # Create new events
     await create_discord_events(guild, events)
     logging.info("Events successfully created.")
