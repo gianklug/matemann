@@ -1,2 +1,2 @@
-py-cord==2.6.1
+py-cord==2.8.1
 requests==2.34.2
